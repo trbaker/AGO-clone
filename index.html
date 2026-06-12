@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArcGIS Online Content Transfer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EDEA;        /* pale map-paper */
+  --ink:#1C2B26;          /* survey ink */
+  --panel:#FFFFFF;
+  --line:#C7D0CB;
+  --source:#D96E30;       /* survey orange — source account */
+  --target:#2E6F8E;       /* basin blue — target account */
+  --ok:#2E7D52;
+  --warn:#A66A00;
+  --err:#B3372B;
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --sans:'Archivo', system-ui, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);min-height:100vh;
+  background-image:linear-gradient(var(--line) 1px, transparent 1px),linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:48px 48px;background-position:center top;}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 20px 80px}
+header{margin-bottom:28px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#5A6B63}
+h1{font-size:clamp(26px,4vw,38px);font-weight:800;font-stretch:90%;letter-spacing:-.01em;margin-top:6px}
+h1 .src{color:var(--source)} h1 .tgt{color:var(--target)}
+.sub{margin-top:8px;max-width:62ch;font-size:14.5px;line-height:1.55;color:#3C4A44}
+
+/* notice banner */
+.notice{border:1px solid var(--line);border-left:4px solid var(--warn);background:#FFF;border-radius:8px;
+  padding:12px 16px;font-size:13.5px;line-height:1.55;margin:18px 0 26px;color:#4A4031}
+.notice strong{color:var(--ink)}
+
+/* account panels */
+.accounts{display:grid;grid-template-columns:1fr 64px 1fr;gap:0;align-items:stretch}
+@media(max-width:760px){.accounts{grid-template-columns:1fr}.corridor{display:none}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;position:relative}
+.panel h2{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px}
+.pin{width:14px;height:14px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:inline-block;flex:0 0 auto}
+.panel.source{border-top:4px solid var(--source)} .panel.source .pin{background:var(--source)}
+.panel.target{border-top:4px solid var(--target)} .panel.target .pin{background:var(--target)}
+.panel .role{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#6B7A73;margin-left:auto}
+label{display:block;font-size:12.5px;font-weight:600;margin:16px 0 5px}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font-size:14px;font-family:var(--sans);background:#FBFCFB}
+input:focus{outline:2px solid var(--target);outline-offset:1px}
+.panel.source input:focus{outline-color:var(--source)}
+.hint{font-size:11.5px;color:#6B7A73;margin-top:4px}
+button{font-family:var(--sans);font-weight:700;font-size:14px;border:none;border-radius:8px;padding:11px 18px;cursor:pointer;transition:transform .08s ease, opacity .15s}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.btn-connect{margin-top:18px;width:100%;color:#fff}
+.panel.source .btn-connect{background:var(--source)}
+.panel.target .btn-connect{background:var(--target)}
+.status{margin-top:12px;font-family:var(--mono);font-size:12px;display:flex;align-items:center;gap:7px;min-height:18px}
+.dot{width:8px;height:8px;border-radius:50%;background:#9AA8A1;flex:0 0 auto}
+.dot.ok{background:var(--ok)} .dot.err{background:var(--err)} .dot.busy{background:var(--warn);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* corridor between panels */
+.corridor{display:flex;align-items:center;justify-content:center}
+.corridor svg{overflow:visible}
+.route{stroke:var(--ink);stroke-width:2;stroke-dasharray:6 6;fill:none;opacity:.45}
+.route.active{opacity:1;animation:march 1s linear infinite}
+@keyframes march{to{stroke-dashoffset:-12}}
+
+/* content + transfer sections */
+section.stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;margin-top:22px}
+section.stage h2{font-size:15px;font-weight:700;margin-bottom:4px}
+.stage .desc{font-size:13px;color:#5A6B63;margin-bottom:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn-main{background:var(--ink);color:#fff}
+.btn-ghost{background:transparent;border:1.5px solid var(--ink);color:var(--ink)}
+.count-chip{font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px}
+
+/* item list */
+.itemlist{margin-top:16px;border:1px solid var(--line);border-radius:8px;max-height:320px;overflow:auto;display:none}
+.item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #EDF1EE;font-size:13px}
+.item:last-child{border-bottom:none}
+.item input[type=checkbox]{width:auto;accent-color:var(--ink)}
+.item .itype{font-family:var(--mono);font-size:10.5px;color:#6B7A73;margin-left:auto;white-space:nowrap}
+.item .isize{font-family:var(--mono);font-size:10.5px;color:#6B7A73;white-space:nowrap;min-width:64px;text-align:right}
+.item.big .isize{color:var(--warn);font-weight:600}
+.folder-head{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;background:var(--paper);padding:6px 14px;color:#5A6B63;border-bottom:1px solid #EDF1EE}
+
+/* progress */
+.prog-name{font-family:var(--mono);font-size:13px;margin:14px 0 8px;min-height:18px}
+.prog-track{height:14px;background:var(--paper);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.prog-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--source),var(--target));border-radius:99px;transition:width .35s ease}
+.prog-meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:#5A6B63;margin-top:6px}
+
+/* log */
+.log{margin-top:14px;background:#10201A;color:#C9D8D0;border-radius:8px;padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.7;max-height:260px;overflow:auto;display:none;white-space:pre-wrap;word-break:break-word}
+.log .ok{color:#7FD4A4}.log .warn{color:#F0C36A}.log .err{color:#F09A8D}
+
+@media (prefers-reduced-motion: reduce){
+  .route.active{animation:none}.dot.busy{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">ArcGIS Online · REST API · runs entirely in your browser</div>
+  <h1><span class="src">Source</span> → <span class="tgt">Target</span> content transfer</h1>
+  <p class="sub">Sign in to both ArcGIS Online accounts, scan the source account's content, choose what to move, and copy it item by item — folders included.</p>
+</header>
+
+<div class="notice">
+  <strong>Before you start:</strong> credentials are sent only to ArcGIS Online (<span style="font-family:var(--mono)">arcgis.com</span>) to generate access tokens — nothing is stored or sent anywhere else. Large files (over ~100&nbsp;MB) are read into browser memory and may fail or stall; this tool flags them and lets you skip. Keep this tab open and your computer awake during the copy — closing the tab or letting it sleep will interrupt the transfer. Sessions last 2 hours; very large libraries may need more than one pass. <strong>Hosted feature layers are deep-copied:</strong> each one is exported to a File Geodatabase, downloaded, uploaded to the target, and republished as a brand-new hosted service — the data itself moves, not just a pointer. Expect a few minutes per layer. Maps and apps copied afterward are automatically re-pointed at the new services. Hosted tile/vector tile/scene services can't carry their caches through this API and fall back to a reference with a warning.
+</div>
+
+<div class="accounts">
+  <div class="panel source">
+    <h2><span class="pin"></span> Source account <span class="role">copy from</span></h2>
+    <label for="srcUser">Username</label>
+    <input id="srcUser" autocomplete="username" placeholder="source_username">
+    <label for="srcPass">Password</label>
+    <input id="srcPass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <label for="srcPortal">Portal URL <span style="font-weight:400;color:#6B7A73">(optional)</span></label>
+    <input id="srcPortal" placeholder="https://www.arcgis.com">
+    <p class="hint">Leave blank for ArcGIS Online. For an org URL use e.g. https://myorg.maps.arcgis.com</p>
+    <button class="btn-connect" id="btnSrcConnect" onclick="connect('src')">Sign in to source</button>
+    <div class="status"><span class="dot" id="srcDot"></span><span id="srcStatus">Not signed in</span></div>
+  </div>
+
+  <div class="corridor" aria-hidden="true">
+    <svg width="64" height="120" viewBox="0 0 64 120">
+      <path id="routePath" class="route" d="M4 60 C 24 30, 40 90, 60 60"/>
+      <circle cx="4" cy="60" r="5" fill="var(--source)"/>
+      <circle cx="60" cy="60" r="5" fill="var(--target)"/>
+    </svg>
+  </div>
+
+  <div class="panel target">
+    <h2><span class="pin"></span> Target account <span class="role">copy to</span></h2>
+    <label for="tgtUser">Username</label>
+    <input id="tgtUser" autocomplete="username" placeholder="target_username">
+    <label for="tgtPass">Password</label>
+    <input id="tgtPass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <label for="tgtPortal">Portal URL <span style="font-weight:400;color:#6B7A73">(optional)</span></label>
+    <input id="tgtPortal" placeholder="https://www.arcgis.com">
+    <p class="hint">The signed-in user must have privileges to create content.</p>
+    <button class="btn-connect" id="btnTgtConnect" onclick="connect('tgt')">Sign in to target</button>
+    <div class="status"><span class="dot" id="tgtDot"></span><span id="tgtStatus">Not signed in</span></div>
+  </div>
+</div>
+
+<section class="stage">
+  <h2>1 · Scan source content</h2>
+  <p class="desc">Lists every item in the source account's root folder and subfolders, with estimated sizes.</p>
+  <div class="row">
+    <button class="btn-main" id="btnScan" onclick="scanContent()" disabled>Scan source account</button>
+    <span class="count-chip" id="scanChip">0 items found</span>
+    <button class="btn-ghost" id="btnToggleAll" onclick="toggleAll()" style="display:none">Select / deselect all</button>
+  </div>
+  <div class="itemlist" id="itemList"></div>
+</section>
+
+<section class="stage">
+  <h2>2 · Copy to target</h2>
+  <p class="desc">Items are copied one at a time. Matching folders are created in the target account automatically.</p>
+  <div class="row">
+    <button class="btn-main" id="btnCopy" onclick="startCopy()" disabled>Start copy</button>
+    <button class="btn-ghost" id="btnCancel" onclick="cancelCopy()" style="display:none">Cancel after current item</button>
+  </div>
+  <div class="prog-name" id="progName"></div>
+  <div class="prog-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progTrack">
+    <div class="prog-fill" id="progFill"></div>
+  </div>
+  <div class="prog-meta"><span id="progCount">0 / 0 items</span><span id="progPct">0%</span></div>
+  <div class="log" id="log"></div>
+</section>
+
+</div>
+
+<script>
+"use strict";
+
+const state = {
+  src: { token:null, portal:null, user:null, expires:0 },
+  tgt: { token:null, portal:null, user:null, expires:0 },
+  items: [],            // {id,title,type,size,folderId,folderTitle,selected,url,hasUrl}
+  folders: [],          // source folders {id,title}
+  tgtFolders: {},       // sourceFolderId -> target folderId
+  remap: [],            // {oldUrl,newUrl,oldId,newId} for re-pointing maps/apps
+  copying: false,
+  cancelRequested: false
+};
+
+const BIG_FILE = 100 * 1024 * 1024;     // 100 MB — strong warning
+const SLOW_FILE = 25 * 1024 * 1024;     // 25 MB — heads-up
+const POLL_MS = 3000;                   // export/publish job poll interval
+const JOB_TIMEOUT_MS = 15 * 60 * 1000;  // give up on a single job after 15 min
+const TEXT_TYPES = ["Web Map","Web Scene","Web Mapping Application","Dashboard","Feature Collection","StoryMap","Hub Page","Hub Site Application","Operation View","Workforce Project","Form","Solution","Notebook"];
+const REF_TYPES  = ["Feature Service","Map Service","Image Service","Vector Tile Service","Scene Service","WMS","WMTS","WFS","KML","Geocoding Service","Geoprocessing Service","Network Analysis Service"];
+
+const $ = id => document.getElementById(id);
+
+function normPortal(v){
+  let p = (v || "").trim();
+  if(!p) p = "https://www.arcgis.com";
+  if(!/^https?:\/\//i.test(p)) p = "https://" + p;
+  return p.replace(/\/+$/,"") ;
+}
+
+function logLine(msg, cls){
+  const log = $("log");
+  log.style.display = "block";
+  const span = document.createElement("span");
+  if(cls) span.className = cls;
+  span.textContent = msg + "\n";
+  log.appendChild(span);
+  log.scrollTop = log.scrollHeight;
+}
+
+function fmtSize(b){
+  if(b == null || isNaN(b) || b <= 0) return "—";
+  if(b < 1024) return b + " B";
+  if(b < 1048576) return (b/1024).toFixed(0) + " KB";
+  if(b < 1073741824) return (b/1048576).toFixed(1) + " MB";
+  return (b/1073741824).toFixed(2) + " GB";
+}
+
+async function arcgisPost(url, params){
+  const body = new URLSearchParams({ f:"json", ...params });
+  const res = await fetch(url, { method:"POST", body });
+  if(!res.ok) throw new Error("HTTP " + res.status + " from " + url);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error.message || JSON.stringify(json.error));
+  return json;
+}
+
+async function arcgisGet(url, params){
+  const qs = new URLSearchParams({ f:"json", ...params });
+  const res = await fetch(url + "?" + qs.toString());
+  if(!res.ok) throw new Error("HTTP " + res.status + " from " + url);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error.message || JSON.stringify(json.error));
+  return json;
+}
+
+/* ---------- 0 · Sign in ---------- */
+async function connect(which){
+  const u = $(which + "User").value.trim();
+  const p = $(which + "Pass").value;
+  const portal = normPortal($(which + "Portal").value);
+  const dot = $(which + "Dot"), status = $(which + "Status");
+  if(!u || !p){ status.textContent = "Enter a username and password"; dot.className = "dot err"; return; }
+
+  dot.className = "dot busy"; status.textContent = "Signing in…";
+  $("btn" + (which==="src"?"Src":"Tgt") + "Connect").disabled = true;
+  try{
+    const json = await arcgisPost(portal + "/sharing/rest/generateToken", {
+      username: u, password: p,
+      referer: window.location.origin && window.location.origin !== "null" ? window.location.origin : "https://www.arcgis.com",
+      expiration: 120
+    });
+    state[which] = { token: json.token, portal, user: u, expires: json.expires };
+    dot.className = "dot ok";
+    status.textContent = "Signed in as " + u + " (token valid 2 h)";
+    logLine((which==="src"?"Source":"Target") + " signed in: " + u, "ok");
+  }catch(err){
+    dot.className = "dot err";
+    status.textContent = "Sign-in failed: " + err.message;
+    logLine("Sign-in failed (" + which + "): " + err.message, "err");
+  }finally{
+    $("btn" + (which==="src"?"Src":"Tgt") + "Connect").disabled = false;
+    updateButtons();
+  }
+}
+
+function tokenValid(which){
+  return state[which].token && Date.now() < (state[which].expires - 60000);
+}
+
+function updateButtons(){
+  $("btnScan").disabled = !tokenValid("src");
+  $("btnCopy").disabled = !(tokenValid("src") && tokenValid("tgt") && state.items.some(i=>i.selected));
+}
+
+/* ---------- 1 · Scan ---------- */
+async function scanContent(){
+  const s = state.src;
+  $("btnScan").disabled = true;
+  $("scanChip").textContent = "Scanning…";
+  state.items = []; state.folders = [];
+  try{
+    const base = s.portal + "/sharing/rest/content/users/" + encodeURIComponent(s.user);
+    const root = await arcgisGet(base, { token: s.token, num: 100 });
+    addItems(root.items, null, "Root");
+    // page through root if needed
+    let start = root.nextStart;
+    while(start && start > 0){
+      const page = await arcgisGet(base, { token: s.token, num: 100, start });
+      addItems(page.items, null, "Root");
+      start = page.nextStart;
+    }
+    state.folders = root.folders || [];
+    for(const f of state.folders){
+      let fs = await arcgisGet(base + "/" + f.id, { token: s.token, num: 100 });
+      addItems(fs.items, f.id, f.title);
+      let fStart = fs.nextStart;
+      while(fStart && fStart > 0){
+        fs = await arcgisGet(base + "/" + f.id, { token: s.token, num: 100, start: fStart });
+        addItems(fs.items, f.id, f.title);
+        fStart = fs.nextStart;
+      }
+    }
+    renderItems();
+    const totalBytes = state.items.reduce((a,i)=>a+(i.size>0?i.size:0),0);
+    $("scanChip").textContent = state.items.length + " items · " + fmtSize(totalBytes);
+    logLine("Scan complete: " + state.items.length + " items in " + (state.folders.length+1) + " folders.", "ok");
+    const bigOnes = state.items.filter(i=>i.size > BIG_FILE);
+    if(bigOnes.length){
+      logLine("⚠ " + bigOnes.length + " item(s) exceed 100 MB. Browser-based transfer of files this large risks memory limits and timeouts — consider unchecking them and moving those few manually (download from source, upload to target).", "warn");
+    }
+  }catch(err){
+    $("scanChip").textContent = "Scan failed";
+    logLine("Scan failed: " + err.message, "err");
+  }finally{
+    $("btnScan").disabled = false;
+    updateButtons();
+  }
+}
+
+function addItems(items, folderId, folderTitle){
+  (items || []).forEach(it=>{
+    state.items.push({
+      id: it.id, title: it.title || it.name || it.id, type: it.type,
+      size: it.size || 0, folderId, folderTitle,
+      url: it.url || null, selected: true
+    });
+  });
+}
+
+function renderItems(){
+  const list = $("itemList");
+  list.innerHTML = ""; list.style.display = "block";
+  $("btnToggleAll").style.display = "inline-block";
+  const groups = {};
+  state.items.forEach((it,idx)=>{
+    (groups[it.folderTitle] = groups[it.folderTitle] || []).push({it,idx});
+  });
+  Object.keys(groups).forEach(folder=>{
+    const head = document.createElement("div");
+    head.className = "folder-head";
+    head.textContent = "📁 " + folder + " · " + groups[folder].length + " item(s)";
+    list.appendChild(head);
+    groups[folder].forEach(({it,idx})=>{
+      const row = document.createElement("div");
+      row.className = "item" + (it.size > BIG_FILE ? " big" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = it.selected; cb.id = "cb_" + idx;
+      cb.addEventListener("change", ()=>{ it.selected = cb.checked; updateButtons(); });
+      const lbl = document.createElement("label");
+      lbl.htmlFor = cb.id; lbl.style.margin = "0"; lbl.style.fontWeight = "400";
+      lbl.textContent = it.title;
+      const type = document.createElement("span");
+      type.className = "itype"; type.textContent = it.type;
+      const size = document.createElement("span");
+      size.className = "isize";
+      size.textContent = fmtSize(it.size) + (it.size > BIG_FILE ? " ⚠" : "");
+      if(it.size > BIG_FILE) size.title = "Over 100 MB — risky in a browser transfer";
+      row.append(cb, lbl, type, size);
+      list.appendChild(row);
+    });
+  });
+  updateButtons();
+}
+
+function toggleAll(){
+  const anyOff = state.items.some(i=>!i.selected);
+  state.items.forEach(i=> i.selected = anyOff);
+  renderItems();
+}
+
+/* ---------- 2 · Copy ---------- */
+function setProgress(done, total, name){
+  const pct = total ? Math.round(done/total*100) : 0;
+  $("progFill").style.width = pct + "%";
+  $("progTrack").setAttribute("aria-valuenow", pct);
+  $("progPct").textContent = pct + "%";
+  $("progCount").textContent = done + " / " + total + " items";
+  $("progName").textContent = name || "";
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+function subStep(item, txt){
+  $("progName").textContent = "Copying: " + item.title + " — " + txt;
+}
+
+async function pollJob(portal, user, itemId, jobId, jobType, token, label){
+  const url = portal + "/sharing/rest/content/users/" + encodeURIComponent(user) + "/items/" + itemId + "/status";
+  const startT = Date.now();
+  while(true){
+    if(Date.now() - startT > JOB_TIMEOUT_MS) throw new Error(label + " timed out after 15 minutes — the layer may be very large");
+    const st = await arcgisGet(url, { token, jobId, jobType });
+    if(st.status === "completed") return st;
+    if(st.status === "failed") throw new Error(label + " failed: " + (st.statusMessage || "unknown error"));
+    await sleep(POLL_MS);
+  }
+}
+
+async function uniqueServiceName(base){
+  const t = state.tgt;
+  let name = (base || "layer").replace(/\.zip$/i,"").replace(/[^A-Za-z0-9_]/g, "_").slice(0, 80);
+  for(let i = 0; i < 5; i++){
+    const candidate = i === 0 ? name : name + "_copy" + i;
+    try{
+      const res = await arcgisGet(t.portal + "/sharing/rest/portals/self/isServiceNameAvailable",
+        { token: t.token, name: candidate, type: "Feature Service" });
+      if(res.available) return candidate;
+    }catch(e){ break; }
+  }
+  return name + "_" + Date.now();
+}
+
+/* Deep copy of a hosted feature service:
+   export to FGDB on source → poll → download zip → upload to target → publish → poll → metadata + folder → cleanup temps */
+async function deepCopyFeatureService(item, desc, meta, folderId){
+  const s = state.src, t = state.tgt;
+  let exportItemId = null, fgdbItemId = null;
+  try{
+    subStep(item, "step 1/4 · exporting source data to File Geodatabase…");
+    const exp = await arcgisPost(s.portal + "/sharing/rest/content/users/" + encodeURIComponent(s.user) + "/export", {
+      token: s.token, itemId: item.id,
+      title: "TEMP_xfer_" + item.id,
+      exportFormat: "File Geodatabase"
+    });
+    exportItemId = exp.exportItemId;
+    await pollJob(s.portal, s.user, exportItemId, exp.jobId, "export", s.token, "Export of " + meta.title);
+
+    subStep(item, "step 2/4 · downloading exported data…");
+    const dl = await fetch(s.portal + "/sharing/rest/content/items/" + exportItemId + "/data?token=" + encodeURIComponent(s.token));
+    if(!dl.ok) throw new Error("Could not download exported data (HTTP " + dl.status + ")");
+    const blob = await dl.blob();
+    if(blob.size > BIG_FILE){
+      logLine("  ⚠ Exported data for " + meta.title + " is " + fmtSize(blob.size) + " — browser uploads at this size can fail or stall.", "warn");
+    }
+
+    subStep(item, "step 3/4 · uploading data to target (" + fmtSize(blob.size) + ")…");
+    const tgtUserBase = t.portal + "/sharing/rest/content/users/" + encodeURIComponent(t.user);
+    const fd = new FormData();
+    fd.append("f","json");
+    fd.append("token", t.token);
+    fd.append("type","File Geodatabase");
+    fd.append("title","TEMP_xfer_fgdb_" + item.id);
+    fd.append("filename", "xfer_" + item.id + ".zip");
+    fd.append("file", blob, "xfer_" + item.id + ".zip");
+    const upRes = await fetch(tgtUserBase + "/addItem", { method:"POST", body: fd });
+    const upJson = await upRes.json();
+    if(upJson.error) throw new Error(upJson.error.message || JSON.stringify(upJson.error));
+    fgdbItemId = upJson.id;
+
+    subStep(item, "step 4/4 · publishing new hosted feature layer…");
+    const svcName = await uniqueServiceName(desc.name || meta.title);
+    const pub = await arcgisPost(tgtUserBase + "/publish", {
+      token: t.token, itemID: fgdbItemId, filetype: "fileGeodatabase",
+      publishParameters: JSON.stringify({ name: svcName, maxRecordCount: desc.maxRecordCount || 2000 })
+    });
+    const svc = (pub.services || [])[0];
+    if(!svc) throw new Error("Publish request returned no service");
+    if(svc.error) throw new Error(svc.error.message || JSON.stringify(svc.error));
+    if(svc.jobId) await pollJob(t.portal, t.user, svc.serviceItemId, svc.jobId, "publish", t.token, "Publish of " + meta.title);
+
+    // carry the original item card over, then move into the matching folder
+    await arcgisPost(tgtUserBase + "/items/" + svc.serviceItemId + "/update", {
+      token: t.token, title: meta.title, tags: meta.tags,
+      snippet: meta.snippet, description: meta.description
+    }).catch(()=>{});
+    if(folderId){
+      await arcgisPost(tgtUserBase + "/items/" + svc.serviceItemId + "/move",
+        { token: t.token, folder: folderId }).catch(()=>{});
+    }
+
+    // remember the mapping so maps/apps copied later point at the NEW service
+    if(desc.url && svc.serviceurl){
+      state.remap.push({ oldUrl: desc.url, newUrl: svc.serviceurl, oldId: item.id, newId: svc.serviceItemId });
+    }
+    return { mode: "deep", bytes: blob.size };
+  } finally {
+    // clean up temp items regardless of outcome (fire-and-forget)
+    if(exportItemId){
+      arcgisPost(s.portal + "/sharing/rest/content/users/" + encodeURIComponent(s.user) +
+        "/items/" + exportItemId + "/delete", { token: s.token }).catch(()=>{});
+    }
+    if(fgdbItemId){
+      arcgisPost(t.portal + "/sharing/rest/content/users/" + encodeURIComponent(t.user) +
+        "/items/" + fgdbItemId + "/delete", { token: t.token }).catch(()=>{});
+    }
+  }
+}
+
+async function ensureTargetFolder(srcFolderId, srcFolderTitle){
+  if(srcFolderId == null) return null; // root
+  if(state.tgtFolders[srcFolderId]) return state.tgtFolders[srcFolderId];
+  const t = state.tgt;
+  const base = t.portal + "/sharing/rest/content/users/" + encodeURIComponent(t.user);
+  // check existing target folders first
+  const info = await arcgisGet(base, { token: t.token, num: 1 });
+  const existing = (info.folders || []).find(f=>f.title === srcFolderTitle);
+  if(existing){ state.tgtFolders[srcFolderId] = existing.id; return existing.id; }
+  const made = await arcgisPost(base + "/createFolder", { token: t.token, title: srcFolderTitle });
+  state.tgtFolders[srcFolderId] = made.folder.id;
+  logLine("Created target folder: " + srcFolderTitle, "ok");
+  return made.folder.id;
+}
+
+async function copyOne(item){
+  const s = state.src, t = state.tgt;
+  // full item description for metadata
+  const desc = await arcgisGet(s.portal + "/sharing/rest/content/items/" + item.id, { token: s.token });
+  const meta = {
+    title: desc.title || item.title,
+    type: desc.type,
+    tags: (desc.tags || []).join(","),
+    snippet: desc.snippet || "",
+    description: desc.description || "",
+    typeKeywords: (desc.typeKeywords || []).join(","),
+    extent: (desc.extent && desc.extent.length) ? desc.extent.map(c=>c.join(",")).join(",") : ""
+  };
+
+  const folderId = await ensureTargetFolder(item.folderId, item.folderTitle);
+  const addUrl = t.portal + "/sharing/rest/content/users/" + encodeURIComponent(t.user) +
+                 (folderId ? "/" + folderId : "") + "/addItem";
+
+  // 1) Hosted feature services: deep-copy the underlying data
+  if(desc.url && REF_TYPES.includes(desc.type)){
+    const hosted = (desc.typeKeywords || []).includes("Hosted Service");
+    if(hosted && desc.type === "Feature Service"){
+      if((desc.typeKeywords || []).includes("View Service")){
+        logLine("  ℹ " + meta.title + " is a view layer — its visible data becomes a standalone hosted layer on the target.", "warn");
+      }
+      return await deepCopyFeatureService(item, desc, meta, folderId);
+    }
+    // hosted tile / vector tile / scene caches can't be moved via export — reference + loud warning
+    if(hosted){
+      logLine("  ⚠ " + meta.title + " (" + desc.type + ") is hosted, but its cache can't be exported through this API — copied by reference only. Rebuild it on the target from its source feature layer.", "warn");
+    }
+    // non-hosted (registered) services live on an external server — a reference IS the full copy
+    await arcgisPost(addUrl, { token: t.token, ...meta, url: desc.url });
+    return { mode: "reference" };
+  }
+
+  // 2) Try to pull the item's data payload
+  const dataRes = await fetch(s.portal + "/sharing/rest/content/items/" + item.id +
+                              "/data?token=" + encodeURIComponent(s.token));
+  const ctype = (dataRes.headers.get("content-type") || "").toLowerCase();
+
+  // JSON-based items (web maps, dashboards…): re-create from text
+  if(TEXT_TYPES.includes(desc.type) || ctype.includes("application/json") || ctype.includes("text/plain")){
+    const text = await dataRes.text();
+    // a JSON error body means "no data" — fall through to metadata-only
+    let isError = false;
+    try{ const j = JSON.parse(text); if(j && j.error) isError = true; }catch(e){ /* not JSON — treat as data */ }
+    if(!isError && text && text.length){
+      // re-point layer URLs and item IDs at the newly published services
+      let mapped = text;
+      for(const m of state.remap){
+        if(m.oldUrl) mapped = mapped.split(m.oldUrl).join(m.newUrl);
+        if(m.oldId)  mapped = mapped.split(m.oldId).join(m.newId);
+      }
+      await arcgisPost(addUrl, { token: t.token, ...meta, text: mapped });
+      return { mode: "json", bytes: mapped.length, remapped: mapped !== text };
+    }
+    await arcgisPost(addUrl, { token: t.token, ...meta, ...(desc.url ? {url: desc.url} : {}) });
+    return { mode: "metadata-only" };
+  }
+
+  // 3) Binary file items: download blob, re-upload as multipart
+  if(!dataRes.ok){
+    // no downloadable data — create metadata-only copy
+    await arcgisPost(addUrl, { token: t.token, ...meta, ...(desc.url ? {url: desc.url} : {}) });
+    return { mode: "metadata-only" };
+  }
+  const blob = await dataRes.blob();
+  if(blob.size > BIG_FILE){
+    logLine("  ⚠ " + meta.title + " is " + fmtSize(blob.size) + " — uploading anyway, but failures at this size are common in browsers.", "warn");
+  }
+  const fd = new FormData();
+  fd.append("f","json");
+  fd.append("token", t.token);
+  Object.entries(meta).forEach(([k,v])=> fd.append(k, v));
+  fd.append("filename", desc.name || meta.title);
+  fd.append("file", blob, desc.name || meta.title);
+  const upRes = await fetch(addUrl, { method:"POST", body: fd });
+  const upJson = await upRes.json();
+  if(upJson.error) throw new Error(upJson.error.message || JSON.stringify(upJson.error));
+  return { mode: "file", bytes: blob.size };
+}
+
+async function startCopy(){
+  if(state.copying) return;
+  const queue = state.items.filter(i=>i.selected);
+  if(!queue.length) return;
+
+  // pre-flight warnings
+  if(!tokenValid("src") || !tokenValid("tgt")){
+    logLine("A session token has expired — please sign in again.", "err"); return;
+  }
+  const totalBytes = queue.reduce((a,i)=>a+(i.size>0?i.size:0),0);
+  if(totalBytes > 500*1024*1024){
+    logLine("⚠ Selection totals " + fmtSize(totalBytes) + ". Transfers this large risk browser memory limits and the 2-hour token expiry. Consider copying in smaller batches.", "warn");
+  }
+  const slow = queue.filter(i=>i.size > SLOW_FILE && i.size <= BIG_FILE).length;
+  if(slow) logLine("ℹ " + slow + " item(s) are over 25 MB — each may take a while; the progress bar will pause on them.", "warn");
+  const svcCount = queue.filter(i=>i.type === "Feature Service").length;
+  if(svcCount) logLine("ℹ " + svcCount + " feature service(s) will be deep-copied (export → download → upload → publish). Budget a few minutes per layer; very large layers can hit the 15-minute per-job limit.", "warn");
+
+  // Copy data layers FIRST so maps/apps copied afterward can be re-pointed at the new services.
+  const order = it => it.type === "Feature Service" ? 0 : (TEXT_TYPES.includes(it.type) ? 2 : 1);
+  queue.sort((a,b)=> order(a) - order(b));
+  state.remap = [];
+
+  state.copying = true; state.cancelRequested = false;
+  $("btnCopy").disabled = true; $("btnCancel").style.display = "inline-block";
+  document.getElementById("routePath").classList.add("active");
+
+  let done = 0, failed = 0;
+  setProgress(0, queue.length, "Starting…");
+  logLine("— Copy started: " + queue.length + " item(s), ~" + fmtSize(totalBytes) + " —");
+
+  for(const item of queue){
+    if(state.cancelRequested){ logLine("Copy cancelled by user.", "warn"); break; }
+    if(!tokenValid("src") || !tokenValid("tgt")){
+      logLine("Session token expired mid-transfer. " + done + " item(s) were copied; sign in again and re-run for the rest.", "err");
+      break;
+    }
+    setProgress(done, queue.length, "Copying: " + item.title + " (" + item.type + ", " + fmtSize(item.size) + ")");
+    try{
+      const r = await copyOne(item);
+      done++;
+      const note = r.mode === "deep"      ? " (deep copy — data re-hosted as a new service on the target)"
+                 : r.mode === "reference" ? " (copied by reference — points at original service)"
+                 : r.mode === "metadata-only" ? " (metadata only — no downloadable data)"
+                 : r.remapped ? " (layer references updated to the new target services)" : "";
+      logLine("✓ " + item.title + note, "ok");
+    }catch(err){
+      failed++; done++;
+      logLine("✗ " + item.title + " — " + err.message, "err");
+    }
+    setProgress(done, queue.length, "");
+  }
+
+  setProgress(done, queue.length, done >= queue.length ? "Done." : "Stopped.");
+  logLine("— Finished: " + (done - failed) + " copied, " + failed + " failed, " +
+          (queue.length - done) + " not attempted —", failed ? "warn" : "ok");
+  state.copying = false;
+  $("btnCancel").style.display = "none";
+  document.getElementById("routePath").classList.remove("active");
+  updateButtons();
+}
+
+function cancelCopy(){ state.cancelRequested = true; $("btnCancel").disabled = true;
+  setTimeout(()=> $("btnCancel").disabled = false, 500); }
+
+// warn before leaving mid-copy
+window.addEventListener("beforeunload", e=>{
+  if(state.copying){ e.preventDefault(); e.returnValue = ""; }
+});
+</script>
+</body>
+</html>
